@@ -6,7 +6,7 @@ Dear participant,
 welcome to the github page of pre-meeting workshop B at the UK-CIM!
 On this page, you can find all updated material, code and instructions for the workshop.
 
-Slides have just been updated and demo R code will be provided later today.
+Slides and demo R code have just been uploaded.
 
 Please bring your own laptop to this workshop if you wish to follow along with the R demo.
 To have your laptop all set, please make sure that you have 
