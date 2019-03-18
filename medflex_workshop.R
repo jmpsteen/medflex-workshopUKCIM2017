@@ -18,6 +18,8 @@ summary(glm(immigr ~ tone * eth, data = framing))
 fitY <- glm(immigr ~ treat, data = framing)
 summary(fitY)
 
+#----
+
 # inspecting the mediator variable
 with(framing, prop.table(table(treat, anx), margin = 1)) 
 # anxiety seems to be reverse coded (as it has a negative effect on immigr)
@@ -354,10 +356,15 @@ neEffdecomp(neModL)
 
 # eta3 + eta5
 coef(neEffdecomp(neModLM))["total indirect effect"] - coef(neEffdecomp(neModL))["total indirect effect"]
-coef(neEffdecomp(neModL))["pure indirect effect"] - coef(neEffdecomp(neModLM))["pure indirect effect"]
+coef(neEffdecomp(neModL))["pure direct effect"] - coef(neEffdecomp(neModLM))["pure direct effect"]
+
+# eta3 + eta6
+coef(neEffdecomp(neModL))["total direct effect"] - coef(neEffdecomp(neModLM))["total direct effect"]
+coef(neEffdecomp(neModLM))["pure indirect effect"] - coef(neEffdecomp(neModL))["pure indirect effect"]
 
 
-## direct approach to recover partial indirect effect 
+
+## direct approach to recover partial indirect effect (option A: weigh for L)
 # working models
 fitYLM <- glm(immigr ~ treat * p_harm * anxiety + gender + age + educ + income, data = framing)
 fitL <- glm(p_harm ~ treat + gender + age + educ + income, data = framing)
@@ -373,7 +380,7 @@ expData <- within(expData,
                     treat2 <- treat
                     treat <- treat0
                   })
-head(expData[, c("treat0", "treat1", "treat2")])
+head(expData[, c("treat0", "treat1", "treat2")], 8)
 
 # impute counterfactuals
 expData$immigr <- predict(fitYLM, newdata = expData)
@@ -385,8 +392,77 @@ w <- num/denom
 head(data.frame(expData, w))
 
 # natural effect model
-neMod3 <- glm(immigr ~ treat0 * treat1 * treat2, data = expData, weights = w)
-neMod3
+neMod3A <- glm(immigr ~ treat0 * treat1 * treat2, data = expData, weights = w)
+neMod3A
+
+
+
+## direct approach to recover partial indirect effect (option B: weigh for M)
+# working models
+fitYLM <- glm(immigr ~ treat * p_harm * anxiety + gender + age + educ + income, data = framing)
+fitM <- glm(anxiety ~ factor(treat) + p_harm + gender + age + educ + income, data = framing)
+
+# duplicate the data set and create auxiliary variables
+expData <- data.frame(replicate = rep(1:4, times = nrow(framing)),
+                      framing[rep(framing$ID, each = 4), ])
+
+expData <- within(expData, 
+                  {
+                    treat0 <- ifelse(replicate %in% c(1,3), treat, 1-treat)
+                    treat2 <- ifelse(replicate %in% c(1,2), treat, 1-treat)
+                    treat1 <- treat
+                    treat <- treat0
+                  })
+head(expData[, c("treat0", "treat1", "treat2")], 8)
+
+# impute counterfactuals
+expData$immigr <- predict(fitYLM, newdata = expData)
+
+# calculate weights based on generalized propensity scores
+num <- with(expData, dnorm(anxiety, mean = predict(fitM, newdata = within(expData, treat <- treat2)), sd = sqrt(summary(fitM)$dispersion)))
+denom <- with(expData, dnorm(anxiety, mean = predict(fitM, newdata = within(expData, treat <- treat1)), sd = sqrt(summary(fitM)$dispersion)))
+w <- num/denom
+head(data.frame(expData, w))
+
+# natural effect model
+neMod3B <- glm(immigr ~ treat0 * treat1 * treat2, data = expData, weights = w)
+neMod3B
+
+
+
+
+
+#### weighting-based estimator for pure and total partial indirect effect
+
+# eta3 + eta5
+sum(coef(neMod3A)[c("treat2", "treat0:treat2")])
+sum(coef(neMod3B)[c("treat2", "treat0:treat2")])
+
+# eta3 + eta6
+sum(coef(neMod3A)[c("treat2", "treat1:treat2")])
+sum(coef(neMod3B)[c("treat2", "treat1:treat2")])
+
+# pure partial indirect effect (eta3)
+coef(neMod3A)["treat2"]
+coef(neMod3B)["treat2"]
+
+# total partial indirect effect (eta3 + eta5 + eta6 + eta7)
+sum(coef(neMod3A)[c("treat2", "treat0:treat2", "treat1:treat2", "treat0:treat1:treat2")])
+sum(coef(neMod3B)[c("treat2", "treat0:treat2", "treat1:treat2", "treat0:treat1:treat2")])
+
+# simpler NE model
+weightData2 <- neWeight(anxiety ~ factor(treat) + p_harm + gender + age + educ + income, data = framing)
+neModW2 <- neModel(immigr ~ treat0 * treat1, expData = weightData2, se = "robust")
+summary(neModW2)
+
+# pure partial indirect effect (beta2)
+coef(neModW2)["treat11"]
+
+# total partial indirect effect (beta2 + beta3)
+sum(coef(neModW2)[c("treat11", "treat01:treat11")])
+
+
+
 
 # obtain bootstrap standard errors
 library(boot)
